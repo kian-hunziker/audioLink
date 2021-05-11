@@ -93,8 +93,9 @@ class Sender:
         data = self.addPilots(self.getTestDataAsBits())
         encoded = self.repencode(data)
         modulated = self.modulate(encoded)
-        self.writeToWav(np.concatenate((np.zeros(3*44100),modulated)))
-        #print(self.demodulate(modulated))
+        #self.writeToWav(np.concatenate((np.zeros(3*44100),modulated)))
+        demodulated = self.demodulate(modulated)
+        print(demodulated)
         self.playAudio(self.modulate(encoded))
 
 
