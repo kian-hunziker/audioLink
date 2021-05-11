@@ -11,12 +11,12 @@ class Sender:
 
     def __init__(self):
         # sampling frequency
-        self.fs = 1/800
+        self.fs = 1/160
         # determines how many samples are used to encode one bit
-        self.rate = 800
+        self.rate = 160
         # modulation frequencies
-        self.freq_high = 1/ 80
-        self.freq_low = 1/ 100
+        self.freq_high = 1/ 16
+        self.freq_low = 1/ 20
 
         self.audioSampleRate = 44100
 
@@ -53,11 +53,12 @@ class Sender:
         return note
 
     def getTestDataAsBits(self):
-        s = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1], dtype=np.uint8)
+        #s = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1], dtype=np.uint8)
+        s = np.array([1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,1,0,1,0], dtype=np.uint8)
         return s
 
-    def repencode(self, data):
-        encoded = np.repeat(data, self.rate)
+    def repencode(self, data, n):
+        encoded = np.repeat(data, n)
         return encoded
 
     def addPilots(self, data):
@@ -90,8 +91,8 @@ class Sender:
         scipy.io.wavfile.write(file_name, self.audioSampleRate, data.astype(np.float32))
 
     def test(self):
-        data = self.addPilots(self.getTestDataAsBits())
-        encoded = self.repencode(data)
+        data = self.addPilots(self.repencode(self.getTestDataAsBits(), 3))
+        encoded = self.repencode(data, self.rate)
         modulated = self.modulate(encoded)
         #self.writeToWav(np.concatenate((np.zeros(3*44100),modulated)))
         demodulated = self.demodulate(modulated)
