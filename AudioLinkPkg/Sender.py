@@ -40,7 +40,7 @@ class Sender:
         return note
 
     def getTestDataAsBits(self):
-        s = np.array([1, 0, 1, 1, 0, 0, 1])
+        s = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1])
         return s
 
     def repencode(self, data):
@@ -78,7 +78,7 @@ class Sender:
         encoded = self.repencode(data)
         modulated = self.modulate(encoded)
         self.writeToWav(modulated)
-        print(self.demodulate(modulated))
+        #print(self.demodulate(modulated))
         self.playAudio(self.modulate(encoded))
 
 
