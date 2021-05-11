@@ -3,6 +3,7 @@
 import numpy as np
 import simpleaudio as sa
 import scipy.io
+import scipy.io.wavfile
 
 
 
@@ -14,14 +15,16 @@ class Sender:
         # determines how many samples are used to encode one bit
         self.rate = 800
         # modulation frequencies
-        self.freq_high = 1/ 8
-        self.freq_low = 1/ 20
+        self.freq_high = 1/ 80
+        self.freq_low = 1/ 100
+
+        self.audioSampleRate = 44100
 
     def playAudio(self, data):
         audio = data * (2 ** 15 - 1) / np.max(np.abs(data))
 
         audio = audio.astype(np.int16)
-        play_onj = sa.play_buffer(audio, 1, 2, 44100)
+        play_onj = sa.play_buffer(audio, 1, 2, self.audioSampleRate)
 
         play_onj.wait_done()
 
@@ -63,11 +66,19 @@ class Sender:
         sol_low = np.dot(sin_low, np.transpose(data_matrix))
 
         diff = sol_high - sol_low
+        a = np.abs(np.ceil(diff / self.rate))
+        return a
+
+    def writeToWav(self, data):
+        file_name = 'test_without_pilot.wav'
+        scipy.io.wavfile.write(file_name, self.audioSampleRate, data.astype(np.float32))
 
     def test(self):
         data = self.getTestDataAsBits()
         encoded = self.repencode(data)
-        self.demodulate(self.modulate(encoded))
+        modulated = self.modulate(encoded)
+        self.writeToWav(modulated)
+        print(self.demodulate(modulated))
         self.playAudio(self.modulate(encoded))
 
 
