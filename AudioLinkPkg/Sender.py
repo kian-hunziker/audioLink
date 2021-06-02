@@ -15,8 +15,11 @@ class Sender:
         # determines how many samples are used to encode one bit
         self.rate = 160
         # modulation frequencies
-        self.freq_high = 1/ 16
-        self.freq_low = 1/ 20
+        self.freq_high = 1 / 16
+        self.freq_low = 1 / 20
+
+        self.f3 = 1 / 40
+        self.f4 = 1 / 8
 
         self.audioSampleRate = 44100
 
@@ -45,11 +48,8 @@ class Sender:
     def getTestTone(self):
         frequency = 440
         seconds = 3
-
         t = np.linspace(0, seconds, seconds * self.fs, False)
-
         note = np.sin(frequency * t * 2 *np.pi)
-
         return note
 
     def getTestDataAsBits(self):
@@ -71,12 +71,28 @@ class Sender:
         mod_low = np.multiply(np.sin(self.freq_low * t * 2 * np.pi), 1 - data)
         return mod_high + mod_low
 
+    def doubleModulate(self, data):
+        if not (len(data) % 2 == 0):
+            print('we need padding or something of the sort')
+            return
+        length = len(data) // 2
+        dataPart1 = data[0:length]
+        dataPart2 = data[length:]
 
-    def demodulate(self, data):
+        t = np.linspace(0, length, length)
+        mod_1 = np.multiply(np.sin(self.freq_high * t * 2 * np.pi), dataPart1)
+        mod_2 = np.multiply(np.sin(self.freq_low * t * 2 * np.pi), 1 - dataPart1)
+        mod_3 = np.multiply(np.sin(self.f3 * t * 2 * np.pi), dataPart2)
+        mod_4 = np.multiply(np.sin(self.f4 * t * 2 * np.pi), 1 - dataPart2)
+
+        return mod_1 + mod_2 + mod_3 + mod_4
+
+
+    def demodulate(self, data, freq_high, freq_low):
         t = np.linspace(0, 1 / self.fs, self.rate)
 
-        sin_high = np.sin(self.freq_high * t * 2 * np.pi)
-        sin_low = np.sin(self.freq_low * t * 2 * np.pi)
+        sin_high = np.sin(freq_high * t * 2 * np.pi)
+        sin_low = np.sin(freq_low * t * 2 * np.pi)
 
         data_matrix = np.reshape(data, (len(data) // self.rate, self.rate))
         sol_high = np.dot(sin_high, np.transpose(data_matrix))
@@ -85,6 +101,11 @@ class Sender:
         diff = sol_high - sol_low
         a = np.abs(np.ceil(diff / self.rate))
         return a
+
+    def doubleDemodulate(self, data):
+        part1 = self.demodulate(data, self.freq_high, self.freq_low)
+        part2 = self.demodulate(data, self.f3, self.f4)
+        return np.concatenate((part1, part2))
 
     def writeToWav(self, data):
         file_name = 'test_with_silence.wav'
@@ -96,13 +117,23 @@ class Sender:
         file.close()
         return data
 
+    def writeToFile(self, path, data):
+        file = open(path, "wb")
+        file.write(data)
+        file.close()
+
     def test(self):
-        data = self.addPilots(self.repencode(self.getTestDataAsBits(), 3))
+        #data = self.addPilots(self.repencode(self.getTestDataAsBits(), 3))
+        dataBytes = self.readFromFile('penguin.png')
+        data = self.bytesToBits(dataBytes)
         encoded = self.repencode(data, self.rate)
-        modulated = self.modulate(encoded)
+        modulated = self.doubleModulate(encoded)
         #self.writeToWav(np.concatenate((np.zeros(3*44100),modulated)))
-        demodulated = self.demodulate(modulated)
+        #demodulated = self.demodulate(modulated)
+        demodulated = self.doubleDemodulate(modulated)
         print(demodulated)
+        b = self.bitsToBytes(demodulated.astype(np.uint8))
+        self.writeToFile("pinguuuu.png", b)
         self.playAudio(self.modulate(encoded))
 
     def bytesToBits(self, data):
