@@ -90,6 +90,12 @@ class Sender:
         file_name = 'test_with_silence.wav'
         scipy.io.wavfile.write(file_name, self.audioSampleRate, data.astype(np.float32))
 
+    def readFromFile(self, path):
+        file = open(path, "rb")
+        data = file.read()
+        file.close()
+        return data
+
     def test(self):
         data = self.addPilots(self.repencode(self.getTestDataAsBits(), 3))
         encoded = self.repencode(data, self.rate)
@@ -99,6 +105,20 @@ class Sender:
         print(demodulated)
         self.playAudio(self.modulate(encoded))
 
+    def bytesToBits(self, data):
+        dataAsInts = np.fromstring(data, dtype=np.uint8)
+        bits = np.unpackbits(dataAsInts)
+        return bits
 
+    def bitsToBytes(self, bits):
+        binaryBites = np.reshape(bits, ((len(bits) // 8), 8))
+        dataAsBytes = np.packbits(binaryBites, axis=1).flatten().tobytes()
+        return dataAsBytes
+
+    def testConversion(self):
+        data = self.readFromFile('penguin.png')
+        bits = self.bytesToBits(data)
+        res = self.bitsToBytes(bits)
+        passed = data == res
 
 
