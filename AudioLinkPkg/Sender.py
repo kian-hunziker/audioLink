@@ -108,7 +108,7 @@ class Sender:
         return np.concatenate((part1, part2))
 
     def writeToWav(self, data):
-        file_name = 'test_with_silence.wav'
+        file_name = 'test_double.wav'
         scipy.io.wavfile.write(file_name, self.audioSampleRate, data.astype(np.float32))
 
     def readFromFile(self, path):
@@ -128,7 +128,7 @@ class Sender:
         data = self.bytesToBits(dataBytes)
         encoded = self.repencode(data, self.rate)
         modulated = self.doubleModulate(encoded)
-        #self.writeToWav(np.concatenate((np.zeros(3*44100),modulated)))
+        self.writeToWav(np.concatenate((np.zeros(3*44100),modulated)))
         #demodulated = self.demodulate(modulated)
         demodulated = self.doubleDemodulate(modulated)
         print(demodulated)
