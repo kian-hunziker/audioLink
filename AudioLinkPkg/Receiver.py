@@ -129,6 +129,16 @@ class Receiver:
         firstChange = self.modulate(self.repencode(np.array([1, 0])))
         return self.calculateOffsetToTransmition(firstChange, data)
 
+    def bitsToBytes(self, bits):
+        binaryBites = np.reshape(bits, ((len(bits) // 8), 8))
+        dataAsBytes = np.packbits(binaryBites, axis=1).flatten().tobytes()
+        return dataAsBytes
+
+    def writeToFile(self, path, data):
+        file = open(path, "wb")
+        file.write(data)
+        file.close()
+
     def recordAudio(self):
         seconds = 7
         myrecording = sd.rec(int(seconds * self.audioSampleRate), samplerate=self.audioSampleRate, channels=1)
@@ -148,6 +158,9 @@ class Receiver:
         decoded = self.demodulate(truncated, self.freq_high, self.freq_low)
         actual = self.removePilots(decoded)
         actual = self.repdecode(actual, 3)
+
+        b = self.bitsToBytes(actual.astype(np.uint8))
+        self.writeToFile('p.png' b)
 
         #expected = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1])
         #diff = expected - actual
