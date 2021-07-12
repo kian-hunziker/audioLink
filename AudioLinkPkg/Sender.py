@@ -64,6 +64,11 @@ class Sender:
     def addPilots(self, data):
         return np.concatenate((self.pilot1, data, self.pilot2))
 
+    def addModulatedPilots(self, data):
+        modPilot1 = self.modulate(self.repencode(self.pilot1, self.rate))
+        modPilot2 = self.modulate(self.repencode(self.pilot2, self.rate))
+        return np.concatenate((modPilot1, data, modPilot2))
+
     def modulate(self, data):
         length = len(data)
         t = np.linspace(0, length, length)
@@ -123,17 +128,20 @@ class Sender:
         file.close()
 
     def test(self):
-        #data = self.addPilots(self.repencode(self.getTestDataAsBits(), 3))
-        dataBytes = self.readFromFile('penguin.png')
-        data = self.bytesToBits(dataBytes)
+        data = self.addPilots(self.repencode(self.getTestDataAsBits(), 3))
+        #dataBytes = self.readFromFile('penguin.png')
+        #data = self.bytesToBits(dataBytes)
         encoded = self.repencode(data, self.rate)
         modulated = self.doubleModulate(encoded)
-        self.writeToWav(np.concatenate((np.zeros(3*44100),modulated)))
-        #demodulated = self.demodulate(modulated)
+        self.writeToWav(np.concatenate((np.zeros(3*44100), modulated)))
         demodulated = self.doubleDemodulate(modulated)
+        #demodulated = self.doubleDemodulate(modulated)
+        print('data and pilots')
         print(demodulated)
-        b = self.bitsToBytes(demodulated.astype(np.uint8))
-        self.writeToFile("pinguuuu.png", b)
+        print('data only')
+        print(self.getTestDataAsBits())
+        #b = self.bitsToBytes(demodulated.astype(np.uint8))
+        #self.writeToFile("pinguuuu.png", b)
         self.playAudio(self.modulate(encoded))
 
     def bytesToBits(self, data):
@@ -151,5 +159,13 @@ class Sender:
         bits = self.bytesToBits(data)
         res = self.bitsToBytes(bits)
         passed = data == res
+
+    def testDoubleModulation(self):
+        data = self.repencode(self.getTestDataAsBits(), 3)
+        encoded = self.repencode(data, self.rate)
+        modulatedData = self.doubleModulate(encoded)
+        dataWithPilots = self.addModulatedPilots(modulatedData)
+        self.writeToWav(dataWithPilots)
+        self.playAudio(dataWithPilots)
 
 
