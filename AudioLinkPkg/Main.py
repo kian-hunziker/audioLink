@@ -3,7 +3,7 @@ from Receiver import Receiver
 import scipy.io.wavfile
 
 sender = Sender()
-sender.test()
+sender.testDoubleModulation()
 
-#receiver = Receiver()
-#receiver.test()
+receiver = Receiver()
+receiver.testDoubleDecode()

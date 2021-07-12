@@ -17,6 +17,9 @@ class Receiver:
         self.freq_high = 1 / 16
         self.freq_low = 1 / 20
 
+        self.f3 = 1 / 40
+        self.f4 = 1 / 8
+
         self.audioSampleRate = 44100
 
         self.pilot1 = np.array([1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1,
@@ -61,11 +64,11 @@ class Receiver:
         mod_low = np.multiply(np.sin(self.freq_low * t * 2 * np.pi), 1 - data)
         return mod_high + mod_low
 
-    def demodulate(self, data):
+    def demodulate(self, data, freq_high, freq_low):
         t = np.linspace(0, 1 / self.fs, self.rate)
 
-        sin_high = np.sin(self.freq_high * t * 2 * np.pi)
-        sin_low = np.sin(self.freq_low * t * 2 * np.pi)
+        sin_high = np.sin(freq_high * t * 2 * np.pi)
+        sin_low = np.sin(freq_low * t * 2 * np.pi)
 
         data_matrix = np.reshape(data, (len(data) // self.rate, self.rate))
         sol_high = np.dot(sin_high, np.transpose(data_matrix))
@@ -74,6 +77,11 @@ class Receiver:
         diff = sol_high - sol_low
         demodulated = np.abs(np.ceil(diff / self.rate))
         return demodulated
+
+    def doubleDemodulate(self, data):
+        part1 = self.demodulate(data, self.freq_high, self.freq_low)
+        part2 = self.demodulate(data, self.f3, self.f4)
+        return np.concatenate((part1, part2))
 
     def calculateOffsetToTransmition(self, zeroOne, data):
         #corr = np.correlate(zeroOne, data)
@@ -106,6 +114,21 @@ class Receiver:
         trunc_2 = trunc_1[:offset_2]
         return trunc_2
 
+    def removeDoubleModPilots(self, singleDemod, originalData):
+        pilot_1_converted = self.convertToOneMinusOne(self.pilot1.astype(np.float32))
+        pilot_2_converted = self.convertToOneMinusOne(self.pilot2.astype(np.float32))
+
+        offset_1 = self.calculateOffsetToTransmition(pilot_1_converted, self.convertToOneMinusOne(singleDemod)) - 50
+        trunc_1 = singleDemod[offset_1 + len(self.pilot1):]
+        offset_2 = self.calculateOffsetToTransmition(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - 50
+
+        result = originalData[self.rate * (offset_1 + len(self.pilot1)):]
+        return result[:self.rate * offset_2]
+
+    def findOffsetToFirstChange(self, data):
+        firstChange = self.modulate(self.repencode(np.array([1, 0])))
+        return self.calculateOffsetToTransmition(firstChange, data)
+
     def recordAudio(self):
         seconds = 7
         myrecording = sd.rec(int(seconds * self.audioSampleRate), samplerate=self.audioSampleRate, channels=1)
@@ -114,16 +137,15 @@ class Receiver:
 
 
     def test(self):
-        #input = self.readWav('test_ableton_with_noise_quiet.wav')
-        input = self.recordAudio()
+        input = self.readWav('test_ableton_with_noise.wav')
+        #input = self.recordAudio()
         #print(self.demodulate(input))
         #input = np.concatenate((np.random.rand(1000), input, np.random.rand(1000)))
-        firstChange = self.modulate(self.repencode(np.array([1,0])))
-        offset = self.calculateOffsetToTransmition(firstChange, input)
 
+        offset = self.findOffsetToFirstChange(input)
         truncated = self.truncateToTauS(input, offset)
         #truncated = input
-        decoded = self.demodulate(truncated)
+        decoded = self.demodulate(truncated, self.freq_high, self.freq_low)
         actual = self.removePilots(decoded)
         actual = self.repdecode(actual, 3)
 
@@ -141,6 +163,19 @@ class Receiver:
         print('actual: ', actual)
         #print('difference: ', diff)
         #print('error sum ', error_sum)
+
+    def testDoubleDecode(self):
+        input = self.readWav('test_double.wav')
+        #input = self.recordAudio()
+        truncated = self.truncateToTauS(input, self.findOffsetToFirstChange(input))
+        singleDecoded = self.demodulate(truncated, self.freq_high, self.freq_low)
+        noPilots = self.removeDoubleModPilots(singleDecoded, truncated)
+        doubleDemod = self.doubleDemodulate(noPilots)
+        actual = self.repdecode(doubleDemod, 3)
+
+        print('actual: ', actual)
+
+
 
     def testDecode(self):
         a = self.repdecode(np.array([1,1,1,0,0,1,0,0,1,0,1,1]), 4)
