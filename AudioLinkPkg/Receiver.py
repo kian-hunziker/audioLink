@@ -3,16 +3,19 @@ import scipy.io.wavfile
 from scipy import signal
 import numpy as np
 import simpleaudio as sa
+import sounddevice as sd
+from scipy.io.wavfile import write
+
 
 class Receiver:
     def __init__(self):
         # sampling frequency
-        self.fs = 1 / 800
+        self.fs = 1 / 160
         # determines how many samples are used to encode one bit
-        self.rate = 800
+        self.rate = 160
         # modulation frequencies
-        self.freq_high = 1 / 80
-        self.freq_low = 1 / 100
+        self.freq_high = 1 / 16
+        self.freq_low = 1 / 20
 
         self.audioSampleRate = 44100
 
@@ -38,6 +41,18 @@ class Receiver:
     def repencode(self, data):
         encoded = np.repeat(data, self.rate)
         return encoded
+
+    def repdecode(self, data, n):
+        try:
+            padding = len(data) % n
+            if padding > 0:
+                print('len', len(data))
+                print('padding:', padding)
+                data = np.concatenate((data, np.zeros(n - padding)))
+            averaged = np.mean(data.reshape(-1, n), axis=1)
+            return np.where(averaged > 0.5, 1, 0)
+        except:
+            print('not divisible by ', n)
 
     def modulate(self, data):
         length = len(data)
@@ -91,9 +106,16 @@ class Receiver:
         trunc_2 = trunc_1[:offset_2]
         return trunc_2
 
+    def recordAudio(self):
+        seconds = 7
+        myrecording = sd.rec(int(seconds * self.audioSampleRate), samplerate=self.audioSampleRate, channels=1)
+        sd.wait()  # Wait until recording is finished
+        return np.reshape(myrecording, myrecording.shape[0])
+
 
     def test(self):
-        input = self.readWav('test_ableton_with_noise_quiet.wav')
+        #input = self.readWav('test_ableton_with_noise_quiet.wav')
+        input = self.recordAudio()
         #print(self.demodulate(input))
         #input = np.concatenate((np.random.rand(1000), input, np.random.rand(1000)))
         firstChange = self.modulate(self.repencode(np.array([1,0])))
@@ -103,18 +125,23 @@ class Receiver:
         #truncated = input
         decoded = self.demodulate(truncated)
         actual = self.removePilots(decoded)
+        actual = self.repdecode(actual, 3)
 
-        expected = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1])
-        diff = expected - actual
-        error_sum = np.sum(np.abs(diff))
+        #expected = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1])
+        #diff = expected - actual
+        #error_sum = np.sum(np.abs(diff))
 
         audio = input * (2 ** 15 - 1) / np.max(np.abs(input))
 
         audio = audio.astype(np.int16)
-        play_onj = sa.play_buffer(audio, 1, 2, self.audioSampleRate)
+        #play_onj = sa.play_buffer(audio, 1, 2, self.audioSampleRate)
 
-        play_onj.wait_done()
+        #play_onj.wait_done()
 
         print('actual: ', actual)
-        print('difference: ', diff)
-        print('error sum ', error_sum)
+        #print('difference: ', diff)
+        #print('error sum ', error_sum)
+
+    def testDecode(self):
+        a = self.repdecode(np.array([1,1,1,0,0,1,0,0,1,0,1,1]), 4)
+        print(a)
