@@ -140,14 +140,18 @@ class Receiver:
         file.close()
 
     def recordAudio(self):
-        seconds = 7
+        seconds = 5 * 60
         myrecording = sd.rec(int(seconds * self.audioSampleRate), samplerate=self.audioSampleRate, channels=1)
         sd.wait()  # Wait until recording is finished
-        return np.reshape(myrecording, myrecording.shape[0])
+
+        file_name = 'recording.wav'
+        recording = np.reshape(myrecording, myrecording.shape[0])
+        scipy.io.wavfile.write(file_name, self.audioSampleRate, recording.astype(np.float32))
+        return recording
 
 
     def test(self):
-        input = self.readWav('test_ableton_with_noise.wav')
+        input = self.readWav('recording.wav')
         #input = self.recordAudio()
         #print(self.demodulate(input))
         #input = np.concatenate((np.random.rand(1000), input, np.random.rand(1000)))
@@ -160,7 +164,7 @@ class Receiver:
         actual = self.repdecode(actual, 3)
 
         b = self.bitsToBytes(actual.astype(np.uint8))
-        self.writeToFile('p.png' b)
+        self.writeToFile('p.png', b)
 
         #expected = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1])
         #diff = expected - actual
