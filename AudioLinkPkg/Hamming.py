@@ -35,8 +35,29 @@ class Hamming:
                 input[errorPos] = 1
         return input
 
+    def encodeBitStream(self, input):
+        if len(input) % 4 == 0:
+            inputMatrix = np.reshape(input, (len(input) // 4, 4))
+            encodedMatrix = np.transpose(self.encode(np.transpose(inputMatrix)))
+            encodedStream = np.reshape(encodedMatrix, encodedMatrix.size)
+            return encodedStream
+
+    def decodeAndCorrectStream(self, input):
+        if len(input) % 7 == 0:
+            inputMatrix = np.reshape(input, (len(input) // 7, 7))
+            for i in range(len(input) // 7):
+                inputMatrix[i] = self.correct(inputMatrix[i])
+
+            correctedStream = np.reshape(inputMatrix, inputMatrix.size)
+            return correctedStream
+
 
 
 
 hamming = Hamming()
-i = np.array([1, 0, 1, 1])
+i = np.array([1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1])
+encoded = hamming.encodeBitStream(i)
+encoded[1] = 0
+encoded[11] = 1
+corrected = hamming.decodeAndCorrectStream(encoded)
+a = 11
