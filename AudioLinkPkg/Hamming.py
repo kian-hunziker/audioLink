@@ -3,6 +3,7 @@ import simpleaudio as sa
 import scipy.io
 import scipy.io.wavfile
 
+
 class Hamming:
     def __init__(self):
         self.G = np.array([[1, 1, 0, 1], [1, 0, 1, 1], [1, 0, 0, 0], [0, 1, 1, 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
@@ -45,19 +46,14 @@ class Hamming:
     def decodeAndCorrectStream(self, input):
         if len(input) % 7 == 0:
             inputMatrix = np.reshape(input, (len(input) // 7, 7))
-            for i in range(len(input) // 7):
-                inputMatrix[i] = self.correct(inputMatrix[i])
+            res = self.decode(self.correct(inputMatrix[0]))
+            for i in range(len(input) // 7 - 1):
+                #inputMatrix[i] = self.correct(inputMatrix[i])
+                res = np.concatenate((res, self.decode(self.correct(inputMatrix[i + 1]))))
 
-            correctedStream = np.reshape(inputMatrix, inputMatrix.size)
-            return correctedStream
+            #correctedStream = np.reshape(inputMatrix, inputMatrix.size)
+            return res
 
 
 
 
-hamming = Hamming()
-i = np.array([1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1])
-encoded = hamming.encodeBitStream(i)
-encoded[1] = 0
-encoded[11] = 1
-corrected = hamming.decodeAndCorrectStream(encoded)
-a = 11
