@@ -40,16 +40,19 @@ class Hamming:
             encodedStream = np.reshape(encodedMatrix, encodedMatrix.size)
             return encodedStream
 
-    def decodeAndCorrectStream(self, input):
-        if len(input) % 7 == 0:
-            inputMatrix = np.reshape(input, (len(input) // 7, 7))
-            res = self.decode(self.correct(inputMatrix[0]))
-            for i in range(len(input) // 7 - 1):
-                #inputMatrix[i] = self.correct(inputMatrix[i])
-                res = np.concatenate((res, self.decode(self.correct(inputMatrix[i + 1]))))
+    def decodeAndCorrectStream(self, data):
+        if not len(data) % 7 == 0:
+            data = data[:len(data) - len(data) % 7]
+            print('truncating data for hamming decoding. Data not divisible by 7')
 
-            #correctedStream = np.reshape(inputMatrix, inputMatrix.size)
-            return res
+        inputMatrix = np.reshape(data, (len(data) // 7, 7))
+        res = self.decode(self.correct(inputMatrix[0]))
+        for i in range(len(data) // 7 - 1):
+            #inputMatrix[i] = self.correct(inputMatrix[i])
+            res = np.concatenate((res, self.decode(self.correct(inputMatrix[i + 1]))))
+
+        #correctedStream = np.reshape(inputMatrix, inputMatrix.size)
+        return res
 
 
 

@@ -63,7 +63,7 @@ class Receiver:
 
 
     def calibrate(self, plot=False):
-        calibration_input = self.recordAudio(5)
+        calibration_input = self.recordAudio(10)
         #calibration_input = self.readWav('calibration.wav')
 
         sin_high = self.modulate(self.repencode(np.array([1,1,1,1,1]), self.rate))
@@ -201,11 +201,13 @@ class Receiver:
         myrecording = sd.rec(int(seconds * self.audioSampleRate), samplerate=self.audioSampleRate, channels=1)
         sd.wait()  # Wait until recording is finished
 
+        recording = np.reshape(myrecording, myrecording.shape[0])
+
         if save_recording:
             file_name = recording_name
             if not recording_name.endswith('.wav'):
                 file_name = recording_name + '.wav'
-            recording = np.reshape(myrecording, myrecording.shape[0])
+
             scipy.io.wavfile.write(file_name, self.audioSampleRate, recording.astype(np.float32))
 
         return recording
@@ -242,7 +244,7 @@ class Receiver:
         print('error percentage', error_sum / len(expected) * 100)
 
     def receiveRepencoded(self, duration, repetitions=5, bits=False, from_file=False, file_path=None,
-                          save_file=False, recording_name=None):
+                          save_file=False, recording_name=None, plot=False):
         data_in = None
         if from_file:
             data_in = self.readWav(file_path)
@@ -259,6 +261,10 @@ class Receiver:
         no_pilots = self.removePilots(demodulated)
         decoded = self.repdecode(no_pilots, repetitions)
 
+        if plot:
+            plt.plot(data_in)
+            plt.show()
+
         if bits:
             return decoded
         else:
@@ -269,7 +275,7 @@ class Receiver:
                 print('could not convert bits to bytes. \nData might not be divisible by eight')
 
     def receiveHammingEncoded(self, duration, repetitions=5, bits=False, from_file=False, file_path=None,
-                          save_file=False, recording_name=None):
+                          save_file=False, recording_name=None, plot=False):
         data_in = None
         if from_file:
             data_in = self.readWav(file_path)
@@ -278,14 +284,18 @@ class Receiver:
 
         offset = self.findOffsetToFirstChange(data_in)
 
-        if offset > self.audioSampleRate // 2 + self.rate // 2:
-            data_in = self.gateInput(data_in)
+        #if offset > self.audioSampleRate // 2 + self.rate // 2:
+            #data_in = self.gateInput(data_in)
 
         truncated = self.truncateToTauS(data_in, offset)
         demodulated = self.demodulate(truncated, self.freq_high, self.freq_low)
         no_pilots = self.removePilots(demodulated)
         rep_decoded = self.repdecode(no_pilots, repetitions)
         decoded = self.hamming.decodeAndCorrectStream(rep_decoded)
+
+        if plot:
+            plt.plot(data_in)
+            plt.show()
 
         if bits:
             return decoded
