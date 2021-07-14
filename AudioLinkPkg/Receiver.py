@@ -69,8 +69,8 @@ class Receiver:
         sin_high = self.modulate(self.repencode(np.array([1,1,1,1,1]), self.rate))
         sin_low = self.modulate(self.repencode(np.array([0,0,0,0,0]), self.rate))
 
-        offset_sin_high = self.calculateOffsetToTransmition(sin_high, calibration_input)
-        offset_sin_low = self.calculateOffsetToTransmition(sin_low, calibration_input)
+        offset_sin_high = self.calculateOffsetToTransmission(sin_high, calibration_input)
+        offset_sin_low = self.calculateOffsetToTransmission(sin_low, calibration_input)
 
         peak_sin_high = 0
         peak_sin_low = 0
@@ -136,6 +136,31 @@ class Receiver:
 
         diff = sol_high - sol_low
         demodulated = np.abs(np.ceil(diff / self.rate))
+
+        starts = np.transpose(data_matrix)
+        starts[0] = np.repeat(np.array([1]), data_matrix.shape[0])
+        testStart = 410030
+
+        markedStarts = np.transpose(starts)
+        '''
+        plt.plot(np.reshape(markedStarts[testStart//160:testStart//160 +6], 6*160))
+        plt.show()
+        plt.plot(sin_high)
+        plt.show()
+        plt.plot(sin_low)
+        plt.show()
+        plt.plot(np.dot(sin_high, np.transpose(data_matrix[testStart // 160:testStart // 160 + 6])))
+        plt.show()
+        plt.plot(np.dot(sin_low, np.transpose(data_matrix[testStart // 160:testStart // 160 + 6])))
+        plt.show()
+        '''
+        plt.plot(np.dot(sin_low, np.transpose(data_matrix)))
+        plt.show()
+
+        plt.plot(np.dot(sin_high, np.transpose(data_matrix)))
+        plt.show()
+
+
         return demodulated
 
     def doubleDemodulate(self, data):
@@ -143,7 +168,7 @@ class Receiver:
         part2 = self.demodulate(data, self.f3, self.f4)
         return np.concatenate((part1, part2))
 
-    def calculateOffsetToTransmition(self, zeroOne, data):
+    def calculateOffsetToTransmission(self, zeroOne, data):
         testCorr = signal.correlate(data, zeroOne, mode="same")
 
         # TODO improve this offset calculation
@@ -165,9 +190,9 @@ class Receiver:
         pilot_1_converted = self.convertToOneMinusOne(self.pilot1.astype(np.float32))
         pilot_2_converted = self.convertToOneMinusOne(self.pilot2.astype(np.float32))
 
-        offset_1 = self.calculateOffsetToTransmition(pilot_1_converted, self.convertToOneMinusOne(data)) - len(self.pilot1) // 2
+        offset_1 = self.calculateOffsetToTransmission(pilot_1_converted, self.convertToOneMinusOne(data)) - len(self.pilot1) // 2
         trunc_1 = data[offset_1 + len(self.pilot1):]
-        offset_2 = self.calculateOffsetToTransmition(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - len(self.pilot2) // 2
+        offset_2 = self.calculateOffsetToTransmission(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - len(self.pilot2) // 2
         trunc_2 = trunc_1[:offset_2]
         return trunc_2
 
@@ -175,16 +200,16 @@ class Receiver:
         pilot_1_converted = self.convertToOneMinusOne(self.pilot1.astype(np.float32))
         pilot_2_converted = self.convertToOneMinusOne(self.pilot2.astype(np.float32))
 
-        offset_1 = self.calculateOffsetToTransmition(pilot_1_converted, self.convertToOneMinusOne(singleDemod)) - len(self.pilot1) // 2
+        offset_1 = self.calculateOffsetToTransmission(pilot_1_converted, self.convertToOneMinusOne(singleDemod)) - len(self.pilot1) // 2
         trunc_1 = singleDemod[offset_1 + len(self.pilot1):]
-        offset_2 = self.calculateOffsetToTransmition(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - len(self.pilot2) // 2
+        offset_2 = self.calculateOffsetToTransmission(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - len(self.pilot2) // 2
 
         result = originalData[self.rate * (offset_1 + len(self.pilot1)):]
         return result[:self.rate * offset_2]
 
     def findOffsetToFirstChange(self, data):
         firstChange = self.modulate(self.repencode(np.array([1, 0]), self.rate))
-        return self.calculateOffsetToTransmition(firstChange, data)
+        return self.calculateOffsetToTransmission(firstChange, data)
 
     def bitsToBytes(self, bits):
         binaryBites = np.reshape(bits, ((len(bits) // 8), 8))
@@ -251,13 +276,20 @@ class Receiver:
         else:
             data_in = self.recordAudio(duration, save_file, recording_name)
 
-        offset = self.findOffsetToFirstChange(data_in)
+        off = self.findOffsetToFirstChange(data_in)
 
-        if offset > self.audioSampleRate // 2 + self.rate // 2:
+        if off > self.audioSampleRate // 2 + self.rate // 2:
             data_in = self.gateInput(data_in)
 
-        truncated = self.truncateToTauS(data_in, offset)
-        demodulated = self.demodulate(truncated, self.freq_high, self.freq_low)
+        res = np.zeros(len(data_in) // self.rate - 1)
+        for i in range(self.rate // 32):
+            data_in2 = np.copy(data_in)
+            offset = self.findOffsetToFirstChange(data_in2) + 16 * i
+            truncated = self.truncateToTauS(data_in2, offset)
+            demodulated = self.demodulate(truncated, self.freq_high, self.freq_low)
+            res = np.add(res, demodulated[:len(data_in) // self.rate - 1])
+
+        demodulated = np.where(res > self.rate // 64, 1, 0)
         no_pilots = self.removePilots(demodulated)
         decoded = self.repdecode(no_pilots, repetitions)
 
