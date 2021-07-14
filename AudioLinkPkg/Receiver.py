@@ -4,7 +4,9 @@ from scipy import signal
 import numpy as np
 import simpleaudio as sa
 import sounddevice as sd
+from Sender import Sender
 from scipy.io.wavfile import write
+from Hamming import Hamming
 
 
 class Receiver:
@@ -15,10 +17,10 @@ class Receiver:
         self.rate = 160
         # modulation frequencies
         self.freq_high = 1 / 16
-        self.freq_low = 1 / 20
+        self.freq_low = 1 / 40
 
         self.f3 = 1 / 40
-        self.f4 = 1 / 8
+        self.f4 = 1 / 16
 
         self.audioSampleRate = 44100
 
@@ -34,6 +36,8 @@ class Receiver:
                                 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1,
                                 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0], dtype=np.uint8)
 
+        self.testBits = np.tile(np.array([1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,1,0,1,0]), 10)
+
     def readWav(self, file_name) -> np.ndarray:
         rate, data = scipy.io.wavfile.read(file_name)
 
@@ -41,8 +45,8 @@ class Receiver:
             return data.astype(np.float32, order='C') / 32768.0
         return data
 
-    def repencode(self, data):
-        encoded = np.repeat(data, self.rate)
+    def repencode(self, data, n):
+        encoded = np.repeat(data, n)
         return encoded
 
     def repdecode(self, data, n):
@@ -71,8 +75,8 @@ class Receiver:
         sin_low = np.sin(freq_low * t * 2 * np.pi)
 
         data_matrix = np.reshape(data, (len(data) // self.rate, self.rate))
-        sol_high = np.dot(sin_high, np.transpose(data_matrix))
-        sol_low = np.dot(sin_low, np.transpose(data_matrix))
+        sol_high = np.abs(np.dot(sin_high, np.transpose(data_matrix)))
+        sol_low = np.abs(np.dot(sin_low, np.transpose(data_matrix)))
 
         diff = sol_high - sol_low
         demodulated = np.abs(np.ceil(diff / self.rate))
@@ -98,8 +102,8 @@ class Receiver:
 
     def truncateToTauS(self, data, offset):
         truncated_start = data[(offset % self.rate):]
-        truncated = truncated_start[:len(truncated_start) - (len(truncated_start) % self.rate)]
-        return truncated
+        res = truncated_start[:len(truncated_start) - (len(truncated_start) % self.rate)]
+        return res
 
     def convertToOneMinusOne(self, data):
         return 2 * data - 1
@@ -126,7 +130,7 @@ class Receiver:
         return result[:self.rate * offset_2]
 
     def findOffsetToFirstChange(self, data):
-        firstChange = self.modulate(self.repencode(np.array([1, 0])))
+        firstChange = self.modulate(self.repencode(np.array([1, 0]), self.rate))
         return self.calculateOffsetToTransmition(firstChange, data)
 
     def bitsToBytes(self, bits):
@@ -140,50 +144,77 @@ class Receiver:
         file.close()
 
     def recordAudio(self):
-        seconds = 5 * 60
+        sd.default.device = 4
+        seconds = 80/3
         myrecording = sd.rec(int(seconds * self.audioSampleRate), samplerate=self.audioSampleRate, channels=1)
         sd.wait()  # Wait until recording is finished
 
-        file_name = 'recording.wav'
+        file_name = 'recording2.wav'
         recording = np.reshape(myrecording, myrecording.shape[0])
         scipy.io.wavfile.write(file_name, self.audioSampleRate, recording.astype(np.float32))
         return recording
 
 
     def test(self):
-        input = self.readWav('recording.wav')
+
+        print(sd.query_devices(device=None, kind=None))
+
+
+
+
+        input = self.readWav('recording2.wav')
         #input = self.recordAudio()
+
+        thresh = 2 * np.max(input[:22000])
+
+        input = np.where(np.abs(input) < thresh, 0, input)
+        scipy.io.wavfile.write('gated.wav', self.audioSampleRate, input.astype(np.float32))
+
         #print(self.demodulate(input))
         #input = np.concatenate((np.random.rand(1000), input, np.random.rand(1000)))
 
         offset = self.findOffsetToFirstChange(input)
         truncated = self.truncateToTauS(input, offset)
-        #truncated = input
+        #scipy.io.wavfile.write('truncated.wav', self.audioSampleRate, truncated.astype(np.float32))
         decoded = self.demodulate(truncated, self.freq_high, self.freq_low)
-        actual = self.removePilots(decoded)
-        actual = self.repdecode(actual, 3)
+        noPilots = self.removePilots(decoded)
 
-        b = self.bitsToBytes(actual.astype(np.uint8))
-        self.writeToFile('p.png', b)
+        s = Sender()
+        #remod = s.modulate(s.repencode(actual, self.rate))
+        #scipy.io.wavfile.write('noPilots.wav', self.audioSampleRate, remod.astype(np.float32))
+        hamming = Hamming()
+        #repdec1 = self.repdecode(noPilots, 3)
+        actual1 = hamming.decodeAndCorrectStream(noPilots)
+        repdec2 = self.repdecode(actual1, 4)
+        actual = hamming.decodeAndCorrectStream(repdec2)
+        print('actual: ', actual)
+
+        #b = self.bitsToBytes(actual.astype(np.uint8))
+        #self.writeToFile('pac.bmp', b)
 
         #expected = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1])
-        #diff = expected - actual
-        #error_sum = np.sum(np.abs(diff))
+        diff = self.testBits - actual[:len(self.testBits)]
+        error_sum = np.sum(np.abs(diff))
 
         audio = input * (2 ** 15 - 1) / np.max(np.abs(input))
+
+
+
 
         audio = audio.astype(np.int16)
         #play_onj = sa.play_buffer(audio, 1, 2, self.audioSampleRate)
 
         #play_onj.wait_done()
 
-        print('actual: ', actual)
+
         #print('difference: ', diff)
-        #print('error sum ', error_sum)
+        print('error sum ', error_sum)
+        print('error weight', np.sum(diff))
+        print('error percentage', error_sum / len(self.testBits) * 100)
 
     def testDoubleDecode(self):
-        input = self.readWav('test_double.wav')
-        #input = self.recordAudio()
+        #input = self.readWav('test_double.wav')
+        input = self.recordAudio()
         truncated = self.truncateToTauS(input, self.findOffsetToFirstChange(input))
         singleDecoded = self.demodulate(truncated, self.freq_high, self.freq_low)
         noPilots = self.removeDoubleModPilots(singleDecoded, truncated)
