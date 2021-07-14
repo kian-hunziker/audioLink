@@ -4,32 +4,53 @@ import numpy as np
 import simpleaudio as sa
 import scipy.io
 import scipy.io.wavfile
+from Hamming import Hamming
 
 
 
 class Sender:
 
-    def __init__(self):
-        # sampling frequency
-        self.fs = 1/160
-        # determines how many samples are used to encode one bit
-        self.rate = 160
-        # modulation frequencies
-        self.freq_high = 1 / 16
-        self.freq_low = 1 / 20
+    def __init__(self, tauS=160, tau0=16, tau1=40, sample_rate=44100):
+        '''
+        :param tauS: determines how many samples are used to modulate one bit
+        tauS must be multiple of both tau0 and tau1
+        :param tau0: determines the frequency of the high modulation note
+        :param tau1: determines the frequency of the low modulation
+        :param sample_rate: determines how many audio samples are used per second
+        '''
 
+        # sanity check to see if tauS is indeed a multiple of tau0 and tau1
+        checkTau0 = tauS // tau0
+        checkTau1 = tauS // tau1
+
+        if not (checkTau0 * tau0 == tauS and checkTau1 * tau1 == tauS):
+            print('tauS must be multiple of both tau0 and tau1')
+            return
+
+        self.fs = 1/tauS
+        self.rate = tauS
+        self.freq_high = 1 / tau0
+        self.freq_low = 1 / tau1
+
+        self.weight_high = 1
+        self.weight_low = 1
+
+        # could be used for double modulation. Not in use as of now
         self.f3 = 1 / 40
-        self.f4 = 1 / 8
+        self.f4 = 1 / 16
 
-        self.audioSampleRate = 44100
+        self.audioSampleRate = sample_rate
 
+        self.hamming = Hamming()
 
+        # start sequence to sync transmissions
         self.pilot1 = np.array([1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1,
         1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1,
         0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1,
         0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0,
         0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1], dtype=np.uint8)
 
+        # end sequence to mark end of transmission
         self.pilot2 = np.array([0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1,
         0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0,
         0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1,
@@ -38,23 +59,34 @@ class Sender:
 
     def playAudio(self, data):
         audio = data * (2 ** 15 - 1) / np.max(np.abs(data))
-
         audio = audio.astype(np.int16)
         play_onj = sa.play_buffer(audio, 1, 2, self.audioSampleRate)
-
         play_onj.wait_done()
-
 
     def getTestTone(self):
         frequency = 440
         seconds = 3
         t = np.linspace(0, seconds, seconds * self.fs, False)
-        note = np.sin(frequency * t * 2 *np.pi)
+        note = np.sin(frequency * t * 2 * np.pi)
         return note
 
-    def getTestDataAsBits(self):
+    def getCalibrationTones(self):
+        t = np.linspace(0, 2 * self.audioSampleRate, 2 * self.audioSampleRate)
+        high = np.sin(self.freq_high * t * 2 * np.pi)
+        low = np.sin(self.freq_low * t * 2 * np.pi)
+        pause = np.zeros(self.audioSampleRate // 2)
+        return np.concatenate((high, pause, low))
+
+    def sendCalibration(self):
+        self.playAudio(self.getCalibrationTones())
+
+    def setTransmitionAmplitudes(self, amp_high, amp_low):
+        self.weight_high = amp_high
+        self.weight_low = amp_low
+
+    def getTestDataAsBits(self, repetitions):
         #s = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1], dtype=np.uint8)
-        s = np.array([1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,1,0,1,0], dtype=np.uint8)
+        s = np.tile(np.array([1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,1,0,1,0], dtype=np.uint8), repetitions)
         return s
 
     def repencode(self, data, n):
@@ -72,8 +104,8 @@ class Sender:
     def modulate(self, data):
         length = len(data)
         t = np.linspace(0, length, length)
-        mod_high = np.multiply(np.sin(self.freq_high * t * 2 * np.pi), data)
-        mod_low = np.multiply(np.sin(self.freq_low * t * 2 * np.pi), 1 - data)
+        mod_high = self.weight_high * np.multiply(np.sin(self.freq_high * t * 2 * np.pi), data)
+        mod_low = self.weight_low * np.multiply(np.sin(self.freq_low * t * 2 * np.pi), 1 - data)
         return mod_high + mod_low
 
     def doubleModulate(self, data):
@@ -112,8 +144,7 @@ class Sender:
         part2 = self.demodulate(data, self.f3, self.f4)
         return np.concatenate((part1, part2))
 
-    def writeToWav(self, data):
-        file_name = 'test_double.wav'
+    def writeToWav(self, data, file_name):
         scipy.io.wavfile.write(file_name, self.audioSampleRate, data.astype(np.float32))
 
     def readFromFile(self, path):
@@ -128,9 +159,15 @@ class Sender:
         file.close()
 
     def test(self):
-        data = self.addPilots(self.repencode(self.getTestDataAsBits(), 5))
+        hamming = Hamming()
+        #by = self.readFromFile('pacman2.bmp')
+        #bits = self.bytesToBits(by)
+        #data = self.addPilots(self.repencode(bits, 10))
+        testbits = self.repencode(hamming.encodeBitStream(self.getTestDataAsBits()), 4)
+        data = self.addPilots(self.repencode(hamming.encodeBitStream(testbits), 1))
         #dataBytes = self.readFromFile('penguin.png')
         #data = self.bytesToBits(dataBytes)
+        #data = self.addPilots(self.repencode(data, 5))
         encoded = self.repencode(data, self.rate)
         modulated = self.modulate(encoded)
         #self.writeToWav(np.concatenate((np.zeros(3*44100), modulated)))
@@ -142,6 +179,7 @@ class Sender:
         print(self.getTestDataAsBits())
         #b = self.bitsToBytes(demodulated.astype(np.uint8))
         #self.writeToFile("pinguuuu.png", b)
+        self.writeToWav(modulated)
         self.playAudio(self.modulate(encoded))
 
     def bytesToBits(self, data):
@@ -168,4 +206,23 @@ class Sender:
         self.writeToWav(dataWithPilots)
         self.playAudio(dataWithPilots)
 
+    def sendDataRepencoded(self, data, repetitions=5, bits=False):
+        if not bits:
+            data = self.bytesToBits(data)
 
+        repencoded = self.repencode(data, repetitions)
+        withPilots = self.addPilots(repencoded)
+        modulated = self.modulate(withPilots)
+
+        self.playAudio(modulated)
+
+    def sendDataHamming(self, data, repetitions=5, bits=False):
+        if not bits:
+            data = self.bytesToBits(data)
+
+        hamming_encoded = self.hamming.encodeBitStream(data)
+        rep_encoded = self.repencode(hamming_encoded, repetitions)
+        with_pilots = self.addPilots(rep_encoded)
+        modulated = self.modulate(with_pilots)
+
+        self.playAudio(modulated)
