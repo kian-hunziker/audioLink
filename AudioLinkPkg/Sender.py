@@ -124,27 +124,9 @@ class Sender:
 
         return mod_1 + mod_2 + mod_3 + mod_4
 
-
-    def demodulate(self, data, freq_high, freq_low):
-        t = np.linspace(0, 1 / self.fs, self.rate)
-
-        sin_high = np.sin(freq_high * t * 2 * np.pi)
-        sin_low = np.sin(freq_low * t * 2 * np.pi)
-
-        data_matrix = np.reshape(data, (len(data) // self.rate, self.rate))
-        sol_high = np.dot(sin_high, np.transpose(data_matrix))
-        sol_low = np.dot(sin_low, np.transpose(data_matrix))
-
-        diff = sol_high - sol_low
-        a = np.abs(np.ceil(diff / self.rate))
-        return a
-
-    def doubleDemodulate(self, data):
-        part1 = self.demodulate(data, self.freq_high, self.freq_low)
-        part2 = self.demodulate(data, self.f3, self.f4)
-        return np.concatenate((part1, part2))
-
     def writeToWav(self, data, file_name):
+        if not file_name.endswith('.wav'):
+            file_name = file_name + '.wav'
         scipy.io.wavfile.write(file_name, self.audioSampleRate, data.astype(np.float32))
 
     def readFromFile(self, path):

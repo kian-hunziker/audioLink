@@ -8,35 +8,44 @@ from Sender import Sender
 from scipy.io.wavfile import write
 from Hamming import Hamming
 
-
 class Receiver:
-    def __init__(self):
-        # sampling frequency
-        self.fs = 1 / 160
-        # determines how many samples are used to encode one bit
-        self.rate = 160
-        # modulation frequencies
-        self.freq_high = 1 / 16
-        self.freq_low = 1 / 40
+    def __init__(self, tauS=160, tau0=16, tau1=40, sample_rate=44100):
+        '''
+        :param tauS: determines how many samples are used to modulate one bit
+        tauS must be multiple of both tau0 and tau1
+        :param tau0: determines the frequency of the high modulation note
+        :param tau1: determines the frequency of the low modulation
+        :param sample_rate: determines how many audio samples are used per second
+        '''
 
+        # sanity check to see if tauS is indeed a multiple of tau0 and tau1
+        checkTau0 = tauS // tau0
+        checkTau1 = tauS // tau1
+
+        if not (checkTau0 * tau0 == tauS and checkTau1 * tau1 == tauS):
+            print('tauS must be multiple of both tau0 and tau1')
+            return
+
+        self.fs = 1/tauS
+        self.rate = tauS
+        self.freq_high = 1 / tau0
+        self.freq_low = 1 / tau1
+
+        self.weight_high = 1
+        self.weight_low = 1
+
+        # could be used for double modulation. Not in use as of now
         self.f3 = 1 / 40
         self.f4 = 1 / 16
 
-        self.audioSampleRate = 44100
+        self.audioSampleRate = sample_rate
+        self.audioDeviceId = 0
 
-        self.pilot1 = np.array([1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1,
-                                1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1,
-                                0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1,
-                                0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0,
-                                0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1], dtype=np.uint8)
+        self.hamming = Hamming()
 
-        self.pilot2 = np.array([0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1,
-                                0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0,
-                                0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1,
-                                0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1,
-                                1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0], dtype=np.uint8)
 
-        self.testBits = np.tile(np.array([1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,1,0,1,0]), 10)
+    def getTestBits(self, repetitions):
+        return np.tile(np.array([1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,1,0,1,0]), repetitions)
 
     def readWav(self, file_name) -> np.ndarray:
         rate, data = scipy.io.wavfile.read(file_name)
@@ -49,7 +58,7 @@ class Receiver:
         encoded = np.repeat(data, n)
         return encoded
 
-    def repdecode(self, data, n):
+    def repdecode(data, n):
         try:
             padding = len(data) % n
             if padding > 0:
@@ -60,13 +69,6 @@ class Receiver:
             return np.where(averaged > 0.5, 1, 0)
         except:
             print('not divisible by ', n)
-
-    def modulate(self, data):
-        length = len(data)
-        t = np.linspace(0, length, length)
-        mod_high = np.multiply(np.sin(self.freq_high * t * 2 * np.pi), data)
-        mod_low = np.multiply(np.sin(self.freq_low * t * 2 * np.pi), 1 - data)
-        return mod_high + mod_low
 
     def demodulate(self, data, freq_high, freq_low):
         t = np.linspace(0, 1 / self.fs, self.rate)
@@ -88,10 +90,7 @@ class Receiver:
         return np.concatenate((part1, part2))
 
     def calculateOffsetToTransmition(self, zeroOne, data):
-        #corr = np.correlate(zeroOne, data)
-
         testCorr = signal.correlate(data, zeroOne, mode="same")
-        # lags = signal.correlation_lags(len(data), len(zeroOne))
 
         # TODO improve this offset calculation
         indices = np.where(testCorr > np.max(testCorr) - 2)
@@ -143,74 +142,106 @@ class Receiver:
         file.write(data)
         file.close()
 
-    def recordAudio(self):
-        sd.default.device = 4
-        seconds = 80/3
+    def recordAudio(self, duration, save_recording=False, recording_name=None):
+        seconds = duration
         myrecording = sd.rec(int(seconds * self.audioSampleRate), samplerate=self.audioSampleRate, channels=1)
         sd.wait()  # Wait until recording is finished
 
-        file_name = 'recording2.wav'
-        recording = np.reshape(myrecording, myrecording.shape[0])
-        scipy.io.wavfile.write(file_name, self.audioSampleRate, recording.astype(np.float32))
+        if save_recording:
+            file_name = recording_name
+            if not recording_name.endswith('.wav'):
+                file_name = recording_name + '.wav'
+            recording = np.reshape(myrecording, myrecording.shape[0])
+            scipy.io.wavfile.write(file_name, self.audioSampleRate, recording.astype(np.float32))
+
         return recording
 
+    def getAvailableAudioDevices(self):
+        return sd.query_devices(device=None, kind=None)
 
-    def test(self):
+    def setAudioInputDevice(self, device_id):
+        self.audioDeviceId = device_id
+        sd.default.device = device_id
 
-        print(sd.query_devices(device=None, kind=None))
+    def gateInput(self, data):
+        thresh = 2 * np.max(data[:self.audioSampleRate//2])
+        return np.where(np.abs(data) < thresh, 0, data)
 
+    def test(self, rec_duration, testBitRepetitions, encodeRepetitions, hamming):
+        expected = self.getTestBits(testBitRepetitions)
 
+        if hamming:
+            actual = self.receiveHammingEncoded(rec_duration, repetitions=encodeRepetitions, bits=True,
+                                                save_file=True, recording_name='lastTransmission.wav')
+        else:
+            actual = self.receiveRepencoded(rec_duration, repetitions=encodeRepetitions, bits=True,
+                                                save_file=True, recording_name='lastTransmission.wav')
 
-
-        input = self.readWav('recording2.wav')
-        #input = self.recordAudio()
-
-        thresh = 2 * np.max(input[:22000])
-
-        input = np.where(np.abs(input) < thresh, 0, input)
-        scipy.io.wavfile.write('gated.wav', self.audioSampleRate, input.astype(np.float32))
-
-        #print(self.demodulate(input))
-        #input = np.concatenate((np.random.rand(1000), input, np.random.rand(1000)))
-
-        offset = self.findOffsetToFirstChange(input)
-        truncated = self.truncateToTauS(input, offset)
-        #scipy.io.wavfile.write('truncated.wav', self.audioSampleRate, truncated.astype(np.float32))
-        decoded = self.demodulate(truncated, self.freq_high, self.freq_low)
-        noPilots = self.removePilots(decoded)
-
-        s = Sender()
-        #remod = s.modulate(s.repencode(actual, self.rate))
-        #scipy.io.wavfile.write('noPilots.wav', self.audioSampleRate, remod.astype(np.float32))
-        hamming = Hamming()
-        #repdec1 = self.repdecode(noPilots, 3)
-        actual1 = hamming.decodeAndCorrectStream(noPilots)
-        repdec2 = self.repdecode(actual1, 4)
-        actual = hamming.decodeAndCorrectStream(repdec2)
         print('actual: ', actual)
+        print('length of actual:', len(actual))
 
-        #b = self.bitsToBytes(actual.astype(np.uint8))
-        #self.writeToFile('pac.bmp', b)
-
-        #expected = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1])
-        diff = self.testBits - actual[:len(self.testBits)]
+        diff = expected - actual[:len(expected)]
         error_sum = np.sum(np.abs(diff))
 
-        audio = input * (2 ** 15 - 1) / np.max(np.abs(input))
-
-
-
-
-        audio = audio.astype(np.int16)
-        #play_onj = sa.play_buffer(audio, 1, 2, self.audioSampleRate)
-
-        #play_onj.wait_done()
-
-
-        #print('difference: ', diff)
         print('error sum ', error_sum)
         print('error weight', np.sum(diff))
-        print('error percentage', error_sum / len(self.testBits) * 100)
+        print('error percentage', error_sum / len(expected) * 100)
+
+    def receiveRepencoded(self, duration, repetitions=5, bits=False, from_file=False, file_path=None,
+                          save_file=False, recording_name=None):
+        data_in = None
+        if from_file:
+            data_in = self.readWav(file_path)
+        else:
+            data_in = self.recordAudio(duration, save_file, recording_name)
+
+        offset = self.findOffsetToFirstChange(data_in)
+
+        if offset > self.audioSampleRate // 2 + self.rate // 2:
+            data_in = self.gateInput(data_in)
+
+        truncated = self.truncateToTauS(data_in, offset)
+        demodulated = self.demodulate(truncated, self.freq_high, self.freq_low)
+        no_pilots = self.removePilots(demodulated)
+        decoded = self.repdecode(no_pilots, repetitions)
+
+        if bits:
+            return decoded
+        else:
+            try:
+                data_as_bytes = self.bitsToBytes(decoded)
+                return data_as_bytes
+            except:
+                print('could not convert bits to bytes. \nData might not be divisible by eight')
+
+    def receiveHammingEncoded(self, duration, repetitions=5, bits=False, from_file=False, file_path=None,
+                          save_file=False, recording_name=None):
+        data_in = None
+        if from_file:
+            data_in = self.readWav(file_path)
+        else:
+            data_in = self.recordAudio(duration, save_file, recording_name)
+
+        offset = self.findOffsetToFirstChange(data_in)
+
+        if offset > self.audioSampleRate // 2 + self.rate // 2:
+            data_in = self.gateInput(data_in)
+
+        truncated = self.truncateToTauS(data_in, offset)
+        demodulated = self.demodulate(truncated, self.freq_high, self.freq_low)
+        no_pilots = self.removePilots(demodulated)
+        rep_decoded = self.repdecode(no_pilots, repetitions)
+        decoded = self.hamming.decodeAndCorrectStream(rep_decoded)
+
+        if bits:
+            return decoded
+        else:
+            try:
+                data_as_bytes = self.bitsToBytes(decoded)
+                return data_as_bytes
+            except:
+                print('could not convert bits to bytes. \nData might not be divisible by eight')
+
 
     def testDoubleDecode(self):
         #input = self.readWav('test_double.wav')
@@ -222,8 +253,6 @@ class Receiver:
         actual = self.repdecode(doubleDemod, 3)
 
         print('actual: ', actual)
-
-
 
     def testDecode(self):
         a = self.repdecode(np.array([1,1,1,0,0,1,0,0,1,0,1,1]), 4)
