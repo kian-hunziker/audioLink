@@ -197,8 +197,9 @@ class Sender:
             data = self.bytesToBits(data)
 
         repencoded = self.repencode(data, repetitions)
-        withPilots = self.addPilots(repencoded)
-        modulated = self.modulate(withPilots)
+        with_Pilots = self.addPilots(repencoded)
+        readyToMod = self.repencode(with_Pilots, self.rate)
+        modulated = self.modulate(readyToMod)
 
         self.playAudio(modulated)
 
@@ -209,6 +210,7 @@ class Sender:
         hamming_encoded = self.hamming.encodeBitStream(data)
         rep_encoded = self.repencode(hamming_encoded, repetitions)
         with_pilots = self.addPilots(rep_encoded)
-        modulated = self.modulate(with_pilots)
+        readyToMod = self.repencode(with_pilots, self.rate)
+        modulated = self.modulate(readyToMod)
 
         self.playAudio(modulated)
