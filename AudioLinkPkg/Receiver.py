@@ -7,6 +7,7 @@ import sounddevice as sd
 from Sender import Sender
 from scipy.io.wavfile import write
 from Hamming import Hamming
+from matplotlib import pyplot as plt
 
 class Receiver:
     def __init__(self, tauS=160, tau0=16, tau1=40, sample_rate=44100):
@@ -26,7 +27,7 @@ class Receiver:
             print('tauS must be multiple of both tau0 and tau1')
             return
 
-        self.fs = 1/tauS
+        self.fs = 1 / tauS
         self.rate = tauS
         self.freq_high = 1 / tau0
         self.freq_low = 1 / tau1
@@ -42,10 +43,56 @@ class Receiver:
         self.audioDeviceId = 0
 
         self.hamming = Hamming()
+        # start sequence to sync transmissions
+        self.pilot1 = np.array([1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1,
+                                1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1,
+                                0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1,
+                                0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0,
+                                0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1], dtype=np.uint8)
+
+        # end sequence to mark end of transmission
+        self.pilot2 = np.array([0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1,
+                                0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0,
+                                0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1,
+                                0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1,
+                                1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0], dtype=np.uint8)
 
 
     def getTestBits(self, repetitions):
         return np.tile(np.array([1,1,1,1,1,0,0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,0,0,0,1,1,0,0,1,0,1,0,1,0,1,0]), repetitions)
+
+
+    def calibrate(self, plot=False):
+        calibration_input = self.recordAudio(5)
+        #calibration_input = self.readWav('calibration.wav')
+
+        sin_high = self.modulate(self.repencode(np.array([1,1,1,1,1]), self.rate))
+        sin_low = self.modulate(self.repencode(np.array([0,0,0,0,0]), self.rate))
+
+        offset_sin_high = self.calculateOffsetToTransmition(sin_high, calibration_input)
+        offset_sin_low = self.calculateOffsetToTransmition(sin_low, calibration_input)
+
+        peak_sin_high = 0
+        peak_sin_low = 0
+
+        for i in range(20):
+            start = int(offset_sin_high + i * 1 // self.freq_high)
+            end = int(offset_sin_high + (i + 1) * 1 // self.freq_high)
+            peak_sin_high += np.max(calibration_input[start:end])
+        peak_sin_high /= 20
+
+        for i in range(20):
+            start = int(offset_sin_low + i * 1 // self.freq_low)
+            end = int(offset_sin_low + (i + 1) * 1 // self.freq_low)
+            peak_sin_low += np.max(calibration_input[start:end])
+        peak_sin_low /= 20
+
+        if plot:
+            plt.plot(calibration_input)
+            plt.show()
+
+        return peak_sin_high, peak_sin_low
+
 
     def readWav(self, file_name) -> np.ndarray:
         rate, data = scipy.io.wavfile.read(file_name)
@@ -58,7 +105,7 @@ class Receiver:
         encoded = np.repeat(data, n)
         return encoded
 
-    def repdecode(data, n):
+    def repdecode(self, data, n):
         try:
             padding = len(data) % n
             if padding > 0:
@@ -69,6 +116,13 @@ class Receiver:
             return np.where(averaged > 0.5, 1, 0)
         except:
             print('not divisible by ', n)
+
+    def modulate(self, data):
+        length = len(data)
+        t = np.linspace(0, length, length)
+        mod_high = self.weight_high * np.multiply(np.sin(self.freq_high * t * 2 * np.pi), data)
+        mod_low = self.weight_low * np.multiply(np.sin(self.freq_low * t * 2 * np.pi), 1 - data)
+        return mod_high + mod_low
 
     def demodulate(self, data, freq_high, freq_low):
         t = np.linspace(0, 1 / self.fs, self.rate)
@@ -111,9 +165,9 @@ class Receiver:
         pilot_1_converted = self.convertToOneMinusOne(self.pilot1.astype(np.float32))
         pilot_2_converted = self.convertToOneMinusOne(self.pilot2.astype(np.float32))
 
-        offset_1 = self.calculateOffsetToTransmition(pilot_1_converted, self.convertToOneMinusOne(data)) - 50
+        offset_1 = self.calculateOffsetToTransmition(pilot_1_converted, self.convertToOneMinusOne(data)) - len(self.pilot1) // 2
         trunc_1 = data[offset_1 + len(self.pilot1):]
-        offset_2 = self.calculateOffsetToTransmition(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - 50
+        offset_2 = self.calculateOffsetToTransmition(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - len(self.pilot2) // 2
         trunc_2 = trunc_1[:offset_2]
         return trunc_2
 
@@ -121,9 +175,9 @@ class Receiver:
         pilot_1_converted = self.convertToOneMinusOne(self.pilot1.astype(np.float32))
         pilot_2_converted = self.convertToOneMinusOne(self.pilot2.astype(np.float32))
 
-        offset_1 = self.calculateOffsetToTransmition(pilot_1_converted, self.convertToOneMinusOne(singleDemod)) - 50
+        offset_1 = self.calculateOffsetToTransmition(pilot_1_converted, self.convertToOneMinusOne(singleDemod)) - len(self.pilot1) // 2
         trunc_1 = singleDemod[offset_1 + len(self.pilot1):]
-        offset_2 = self.calculateOffsetToTransmition(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - 50
+        offset_2 = self.calculateOffsetToTransmition(pilot_2_converted, self.convertToOneMinusOne(trunc_1)) - len(self.pilot2) // 2
 
         result = originalData[self.rate * (offset_1 + len(self.pilot1)):]
         return result[:self.rate * offset_2]
@@ -175,7 +229,7 @@ class Receiver:
                                                 save_file=True, recording_name='lastTransmission.wav')
         else:
             actual = self.receiveRepencoded(rec_duration, repetitions=encodeRepetitions, bits=True,
-                                                save_file=True, recording_name='lastTransmission.wav')
+                                            save_file=True, recording_name='lastTransmission.wav')
 
         print('actual: ', actual)
         print('length of actual:', len(actual))

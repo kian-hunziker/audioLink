@@ -72,8 +72,8 @@ class Sender:
 
     def getCalibrationTones(self):
         t = np.linspace(0, 2 * self.audioSampleRate, 2 * self.audioSampleRate)
-        high = np.sin(self.freq_high * t * 2 * np.pi)
-        low = np.sin(self.freq_low * t * 2 * np.pi)
+        high = self.weight_high * np.sin(self.freq_high * t * 2 * np.pi)
+        low = self.weight_low * np.sin(self.freq_low * t * 2 * np.pi)
         pause = np.zeros(self.audioSampleRate // 2)
         return np.concatenate((high, pause, low))
 
@@ -81,8 +81,12 @@ class Sender:
         self.playAudio(self.getCalibrationTones())
 
     def setTransmitionAmplitudes(self, amp_high, amp_low):
-        self.weight_high = amp_high
-        self.weight_low = amp_low
+        if amp_high > amp_low:
+            self.weight_high = amp_low / amp_high
+        else:
+            self.weight_low = amp_high / amp_low
+        #self.weight_high = amp_high
+        #self.weight_low = amp_low
 
     def getTestDataAsBits(self, repetitions):
         #s = np.array([1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1], dtype=np.uint8)
