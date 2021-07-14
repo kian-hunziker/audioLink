@@ -1,7 +1,4 @@
 import numpy as np
-import simpleaudio as sa
-import scipy.io
-import scipy.io.wavfile
 
 
 class Hamming:
@@ -22,7 +19,7 @@ class Hamming:
     def decimalErrorPosition(self, input):
         errorVector = self.errorPositionVector(input)
         res = 4 * errorVector[2] + 2 * errorVector[1] + errorVector[0]
-        return res - 1
+        return int(res - 1)
 
     def decode(self, input):
         return np.dot(self.R, input)
