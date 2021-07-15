@@ -8,6 +8,7 @@ from Sender import Sender
 from scipy.io.wavfile import write
 from Hamming import Hamming
 from matplotlib import pyplot as plt
+import hashlib
 
 class Receiver:
     def __init__(self, tauS=160, tau0=16, tau1=40, sample_rate=44100):
@@ -153,13 +154,13 @@ class Receiver:
         plt.show()
         plt.plot(np.dot(sin_low, np.transpose(data_matrix[testStart // 160:testStart // 160 + 6])))
         plt.show()
-        '''
+    
         plt.plot(np.dot(sin_low, np.transpose(data_matrix)))
         plt.show()
 
         plt.plot(np.dot(sin_high, np.transpose(data_matrix)))
         plt.show()
-
+        '''
 
         return demodulated
 
@@ -248,6 +249,12 @@ class Receiver:
         thresh = 2 * np.max(data[:self.audioSampleRate//2])
         return np.where(np.abs(data) < thresh, 0, data)
 
+    def integrityCheck(self, data):
+        expected_hash = data[-32:]
+        received_hash = hashlib.sha256(data[:len(data) - 32]).digest()
+        return expected_hash == received_hash
+
+
     def test(self, rec_duration, testBitRepetitions, encodeRepetitions, hamming):
         expected = self.getTestBits(testBitRepetitions)
 
@@ -302,7 +309,9 @@ class Receiver:
         else:
             try:
                 data_as_bytes = self.bitsToBytes(decoded)
-                return data_as_bytes
+                if self.integrityCheck(data_as_bytes):
+                    print('Data received correctly, hashs matched')
+                return data_as_bytes[:-32]
             except:
                 print('could not convert bits to bytes. \nData might not be divisible by eight')
 
