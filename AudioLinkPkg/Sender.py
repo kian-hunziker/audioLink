@@ -5,6 +5,7 @@ import simpleaudio as sa
 import scipy.io
 import scipy.io.wavfile
 from Hamming import Hamming
+import hashlib
 
 
 
@@ -178,8 +179,13 @@ class Sender:
         dataAsBytes = np.packbits(binaryBites, axis=1).flatten().tobytes()
         return dataAsBytes
 
+    def addHash(self, data):
+        hash = hashlib.sha256(data).digest()
+        print('calculated hash', hash)
+        return data + hash
+
     def testConversion(self):
-        data = self.readFromFile('penguin.png')
+        data = self.readFromFile('testFiles/penguin.png')
         bits = self.bytesToBits(data)
         res = self.bitsToBytes(bits)
         passed = data == res
@@ -194,7 +200,11 @@ class Sender:
 
     def sendDataRepencoded(self, data, repetitions=5, bits=False):
         if not bits:
-            data = self.bytesToBits(data)
+            data = self.bytesToBits(self.addHash(data))
+        else:
+            # TODO add padding if data is not divisible by 8
+            data_as_bytes = self.bitsToBytes(data)
+            data = self.bytesToBits(self.addHash(data_as_bytes))
 
         repencoded = self.repencode(data, repetitions)
         with_Pilots = self.addPilots(repencoded)

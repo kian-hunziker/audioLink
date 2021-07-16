@@ -157,8 +157,10 @@ class Receiver:
     
         plt.plot(np.dot(sin_low, np.transpose(data_matrix)))
         plt.show()
-
+    
         plt.plot(np.dot(sin_high, np.transpose(data_matrix)))
+        plt.xlabel('bits')
+        plt.ylabel('integral sine high square')
         plt.show()
         '''
 
@@ -297,6 +299,13 @@ class Receiver:
             res = np.add(res, demodulated[:len(data_in) // self.rate - 1])
 
         demodulated = np.where(res > self.rate // 64, 1, 0)
+        '''
+        plt.plot(res[2500:3000])
+        plt.xlabel('bits')
+        plt.ylabel('aggregated demodulation')
+        plt.show()
+        '''
+
         no_pilots = self.removePilots(demodulated)
         decoded = self.repdecode(no_pilots, repetitions)
 
@@ -311,7 +320,9 @@ class Receiver:
                 data_as_bytes = self.bitsToBytes(decoded)
                 if self.integrityCheck(data_as_bytes):
                     print('Data received correctly, hashs matched')
-                return data_as_bytes[:-32]
+                    return data_as_bytes[:-32]
+                else:
+                    print('Data seems to be corrupted, the hashs did not match')
             except:
                 print('could not convert bits to bytes. \nData might not be divisible by eight')
 
