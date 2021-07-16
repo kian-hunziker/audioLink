@@ -11,7 +11,7 @@ import hashlib
 
 class Sender:
 
-    def __init__(self, tauS=160, tau0=16, tau1=40, sample_rate=44100):
+    def __init__(self, tauS=160, tau0=20, tau1=80, sample_rate=44100):
         '''
         :param tauS: determines how many samples are used to modulate one bit
         tauS must be multiple of both tau0 and tau1
@@ -198,7 +198,13 @@ class Sender:
         self.writeToWav(dataWithPilots)
         self.playAudio(dataWithPilots)
 
-    def sendDataRepencoded(self, data, repetitions=5, bits=False):
+    def sendDataRepencoded(self, data, repetitions=3, bits=False):
+        '''
+        Encodes, modulates and plays data
+        :param data: data to be transmitted, either np.array with bits or bytes
+        :param repetitions: number of repetitions per bit
+        :param bits: if false the data will be interpreted as bytes
+        '''
         if not bits:
             data = self.bytesToBits(self.addHash(data))
         else:
@@ -213,7 +219,14 @@ class Sender:
 
         self.playAudio(modulated)
 
-    def sendDataHamming(self, data, repetitions=5, bits=False):
+    def sendDataHamming(self, data, repetitions=3, bits=False):
+        '''
+        Encodes, modulates and plays data. Data will first be encoded using Hamming(7,4) and then
+        every bit will be repeated n times (n = repetitions)
+        :param data: data to be transmitted, either np.array with bits or bytes
+        :param repetitions: number of repetitions per bit
+        :param bits: if false the data will be interpreted as bytes
+        '''
         if not bits:
             data = self.bytesToBits(data)
 

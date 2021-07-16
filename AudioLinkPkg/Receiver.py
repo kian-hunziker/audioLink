@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 import hashlib
 
 class Receiver:
-    def __init__(self, tauS=160, tau0=16, tau1=40, sample_rate=44100):
+    def __init__(self, tauS=160, tau0=20, tau1=80, sample_rate=44100):
         '''
         :param tauS: determines how many samples are used to modulate one bit
         tauS must be multiple of both tau0 and tau1
@@ -77,15 +77,15 @@ class Receiver:
         peak_sin_low = 0
 
         for i in range(20):
-            start = int(offset_sin_high + i * 1 // self.freq_high)
-            end = int(offset_sin_high + (i + 1) * 1 // self.freq_high)
-            peak_sin_high += np.max(calibration_input[start:end])
-        peak_sin_high /= 20
+            start_high = int(offset_sin_high + i * 1 // self.freq_high)
+            end_high = int(offset_sin_high + (i + 1) * 1 // self.freq_high)
+            peak_sin_high += np.max(calibration_input[start_high:end_high])
 
-        for i in range(20):
-            start = int(offset_sin_low + i * 1 // self.freq_low)
-            end = int(offset_sin_low + (i + 1) * 1 // self.freq_low)
-            peak_sin_low += np.max(calibration_input[start:end])
+            start_low = int(offset_sin_low + i * 1 // self.freq_low)
+            end_low = int(offset_sin_low + (i + 1) * 1 // self.freq_low)
+            peak_sin_low += np.max(calibration_input[start_low:end_low])
+
+        peak_sin_high /= 20
         peak_sin_low /= 20
 
         if plot:
@@ -277,8 +277,20 @@ class Receiver:
         print('error weight', np.sum(diff))
         print('error percentage', error_sum / len(expected) * 100)
 
-    def receiveRepencoded(self, duration, repetitions=5, bits=False, from_file=False, file_path=None,
+    def receiveRepencoded(self, duration, repetitions=3, bits=False, from_file=False, file_path=None,
                           save_file=False, recording_name=None, plot=False):
+        '''
+        Starts a recording or reads audio from a wav file. Then demodulates the input and decodes it
+        :param duration: Number of seconds that should be recorded
+        :param repetitions: Number of repetitions used to encode each bit. Must be the same as in the sender
+        :param bits: If true, the method will return a np.array containing the decoded bits. Else it will return bytes
+        :param from_file: If True the input will be read from a wav file and no recording will be started
+        :param file_path: Path to the input wav file
+        :param save_file: if True the recording will be saved to a wav file
+        :param recording_name: Name and path of the file the recording should be saved to
+        :param plot: If True the recording will be shown in a plot
+        :return: Demodulated and decoded data as bytes or as bits depending on parameter bits.
+        '''
         data_in = None
         if from_file:
             data_in = self.readWav(file_path)
@@ -305,7 +317,6 @@ class Receiver:
         plt.ylabel('aggregated demodulation')
         plt.show()
         '''
-
         no_pilots = self.removePilots(demodulated)
         decoded = self.repdecode(no_pilots, repetitions)
 
@@ -326,21 +337,41 @@ class Receiver:
             except:
                 print('could not convert bits to bytes. \nData might not be divisible by eight')
 
-    def receiveHammingEncoded(self, duration, repetitions=5, bits=False, from_file=False, file_path=None,
+    def receiveHammingEncoded(self, duration, repetitions=3, bits=False, from_file=False, file_path=None,
                           save_file=False, recording_name=None, plot=False):
+        '''
+        Starts a recording or reads audio from a wav file. Then demodulates the input and decodes it
+        Use this method to receive data, if the sender is using Hamming encoding
+        :param duration: Number of seconds that should be recorded
+        :param repetitions: Number of repetitions used to encode each bit. Must be the same as in the sender
+        :param bits: If true, the method will return a np.array containing the decoded bits. Else it will return bytes
+        :param from_file: If True the input will be read from a wav file and no recording will be started
+        :param file_path: Path to the input wav file
+        :param save_file: if True the recording will be saved to a wav file
+        :param recording_name: Name and path of the file the recording should be saved to
+        :param plot: If True the recording will be shown in a plot
+        :return: Demodulated and decoded data as bytes or as bits depending on parameter bits.
+        '''
         data_in = None
         if from_file:
             data_in = self.readWav(file_path)
         else:
             data_in = self.recordAudio(duration, save_file, recording_name)
 
-        offset = self.findOffsetToFirstChange(data_in)
+        off = self.findOffsetToFirstChange(data_in)
 
-        #if offset > self.audioSampleRate // 2 + self.rate // 2:
-            #data_in = self.gateInput(data_in)
+        if off > self.audioSampleRate // 2 + self.rate // 2:
+            data_in = self.gateInput(data_in)
 
-        truncated = self.truncateToTauS(data_in, offset)
-        demodulated = self.demodulate(truncated, self.freq_high, self.freq_low)
+        res = np.zeros(len(data_in) // self.rate - 1)
+        for i in range(self.rate // 32):
+            data_in2 = np.copy(data_in)
+            offset = self.findOffsetToFirstChange(data_in2) + 16 * i
+            truncated = self.truncateToTauS(data_in2, offset)
+            demodulated = self.demodulate(truncated, self.freq_high, self.freq_low)
+            res = np.add(res, demodulated[:len(data_in) // self.rate - 1])
+
+        demodulated = np.where(res > self.rate // 64, 1, 0)
         no_pilots = self.removePilots(demodulated)
         rep_decoded = self.repdecode(no_pilots, repetitions)
         decoded = self.hamming.decodeAndCorrectStream(rep_decoded)
@@ -354,7 +385,11 @@ class Receiver:
         else:
             try:
                 data_as_bytes = self.bitsToBytes(decoded)
-                return data_as_bytes
+                if self.integrityCheck(data_as_bytes):
+                    print('Data received correctly, hashs matched')
+                    return data_as_bytes[:-32]
+                else:
+                    print('Data seems to be corrupted, the hashs did not match')
             except:
                 print('could not convert bits to bytes. \nData might not be divisible by eight')
 
