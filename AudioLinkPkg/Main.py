@@ -65,7 +65,7 @@ def receiveLongTestHamming():
     receiver.setAudioInputDevice(input_device_id)
     sender = Sender()
     testBytes = sender.readFromFile('testFiles/pacman2.bmp')
-    actual = receiver.receiveHammingEncoded(35, 3, plot=True)
+    actual = receiver.receiveHammingEncoded(50, 3, plot=True)
 
     testBits = sender.bytesToBits(testBytes)
     actualBits = sender.bytesToBits(actual)
@@ -140,3 +140,4 @@ def testHamming():
 
 
 
+sendLongTestHamming()
