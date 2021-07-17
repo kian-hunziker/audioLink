@@ -4,27 +4,9 @@ import scipy.io.wavfile
 import numpy as np
 from Hamming import Hamming
 
-
-
 '''
-sender = Sender(tau0=20, tau1=80)
-sender.setTransmitionAmplitudes(0.54213, 0.26384)
-#sender.sendCalibration()
-testbits = sender.getTestDataAsBits(50)
-data = sender.readFromFile('testFiles/pacman2.bmp')
-#sender.sendDataRepencoded(data, 3)
-#sender.sendDataHamming(testbits, repetitions=3, bits=True)
-
-
-receiver = Receiver(tau0=20, tau1=80)
-print(receiver.getAvailableAudioDevices())
-receiver.setAudioInputDevice(4)
-#actual = receiver.calibrate(plot=True)
-actual = receiver.receiveRepencoded(10, 3, plot=True, from_file=True, file_path='testFiles/pacmanAudio.wav')
-print(actual)
-print('sum', np.sum(np.abs(testbits - actual)))
+Adjust these values for your input device and calibration for your setup
 '''
-
 #print(Receiver.getAvailableAudioDevices())
 input_device_id = 4
 amplitude_high = 0.54213
