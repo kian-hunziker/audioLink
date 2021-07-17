@@ -254,6 +254,7 @@ class Receiver:
     def integrityCheck(self, data):
         expected_hash = data[-32:]
         received_hash = hashlib.sha256(data[:len(data) - 32]).digest()
+        print('calculated hash:', received_hash)
         return expected_hash == received_hash
 
 

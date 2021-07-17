@@ -1,5 +1,3 @@
-
-
 import numpy as np
 import simpleaudio as sa
 import scipy.io
