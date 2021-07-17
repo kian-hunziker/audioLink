@@ -59,6 +59,19 @@ def receiveLongTestRepencoded():
 
     print('Error sum', np.sum(np.abs(testBits - actualBits)))
 
+def receiveLongTestHamming():
+    receiver = Receiver()
+    print(receiver.getAvailableAudioDevices())
+    receiver.setAudioInputDevice(input_device_id)
+    sender = Sender()
+    testBytes = sender.readFromFile('testFiles/pacman2.bmp')
+    actual = receiver.receiveHammingEncoded(35, 3, plot=True)
+
+    testBits = sender.bytesToBits(testBytes)
+    actualBits = sender.bytesToBits(actual)
+
+    print('Error sum', np.sum(np.abs(testBits - actualBits)))
+
 def sendShortTestRepencoded():
     sender = Sender()
     sender.setTransmitionAmplitudes(amplitude_high, amplitude_low)
@@ -76,6 +89,13 @@ def sendLongTestRepencoded():
     sender.setTransmitionAmplitudes(amplitude_high, amplitude_low)
     data = sender.readFromFile('testFiles/pacman2.bmp')
     sender.sendDataRepencoded(data, 3)
+
+def sendLongTestHamming():
+    sender = Sender()
+    sender.setTransmitionAmplitudes(amplitude_high, amplitude_low)
+    data = sender.readFromFile('testFiles/pacman2.bmp')
+    sender.sendDataHamming(data, 3)
+
 
 def receiveShortTestRepencoded():
     receiver = Receiver()
@@ -120,4 +140,3 @@ def testHamming():
 
 
 
-testReceiverFromFile()

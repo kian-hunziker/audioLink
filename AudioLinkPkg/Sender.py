@@ -205,10 +205,6 @@ class Sender:
         '''
         if not bits:
             data = self.bytesToBits(self.addHash(data))
-        else:
-            # TODO add padding if data is not divisible by 8
-            data_as_bytes = self.bitsToBytes(data)
-            data = self.bytesToBits(self.addHash(data_as_bytes))
 
         repencoded = self.repencode(data, repetitions)
         with_Pilots = self.addPilots(repencoded)
@@ -226,7 +222,7 @@ class Sender:
         :param bits: if false the data will be interpreted as bytes
         '''
         if not bits:
-            data = self.bytesToBits(data)
+            data = self.bytesToBits(self.addHash(data))
 
         hamming_encoded = self.hamming.encodeBitStream(data)
         rep_encoded = self.repencode(hamming_encoded, repetitions)
